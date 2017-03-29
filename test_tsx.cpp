@@ -1,22 +1,9 @@
-/**
- * Compile by:
- * $ g++ -O2 -std=c++11 -DL1DSZ=$(getconf LEVEL1_DCACHE_LINESIZE) -DCORES=$(grep -c processor /proc/cpuinfo) tsx.cc -lpthread
- *
- * Add -DABORT_COUNT to get TSX aborts statistic in the program output.
- *
- * Copyright (C) 2013 Alexander Krizhanovsky (ak@natsys-lab.com).
- *
- * This file is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published
- * by the Free Software Foundation; either version 3, or (at your option)
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- * See http://www.gnu.org/licenses/lgpl.html .
- */
+/*
+  Compile by:
+  $ g++ -O2 -std=c++11 -DL1DSZ=$(getconf LEVEL1_DCACHE_LINESIZE) -DCORES=$(grep -c processor /proc/cpuinfo) tsx.cc -lpthread
+
+  Add -DABORT_COUNT to get TSX aborts statistic in the program output.
+*/
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -74,14 +61,6 @@ static __force_inline void _xabortb(const unsigned int status)
 			:: "i" (status) : "memory");
 }
 
-static __force_inline int _xtestb(void)
-{
-	unsigned char out;
-	asm volatile (".byte 0x0f,0x01,0xd6 ; setnz %0"
-			: "=r" (out) :: "memory");
-	return out;
-}
-
 static const auto TRX_BUF_SZ_MAX = 8192UL;
 enum class Sync : unsigned char {
 	TSX,
@@ -100,6 +79,12 @@ struct CacheLine {
 		return c[0] + cl.c[0];
 	}
 
+	long
+	operator+(int x)
+	{
+		return c[0] + x;
+	}
+
 	void
 	operator+=(int x)
 	{
@@ -110,6 +95,7 @@ struct CacheLine {
 // Memory changed in transactional context.
 static CacheLine debit[TRX_BUF_SZ_MAX] __attribute__((aligned(L1DSZ)));
 static CacheLine credit[TRX_BUF_SZ_MAX] __attribute__((aligned(L1DSZ)));
+static CacheLine ref[TRX_BUF_SZ_MAX] __attribute__((aligned(L1DSZ)));
 
 // Statistics.
 std::atomic<long> aborts(0), retries(0);
@@ -154,8 +140,19 @@ trx_func(unsigned long thr_id, unsigned long trx_sz, int trx_count,
 		for (unsigned i = 0; i < trx_sz; ++i) {
 			unsigned long shift = thr_id * trx_sz + i
 					      - overlap * thr_id;
-			debit[shift] += 1;
-			credit[shift] += -1;
+			ref[shift] += 1;
+		}
+}
+
+static inline void
+cas_func(unsigned long thr_id, unsigned long trx_sz, int trx_count,
+	 int overlap)
+{
+	for (int c = 0; c < trx_count; c++)
+		for (unsigned i = 0; i < trx_sz; ++i) {
+			unsigned long shift = thr_id * trx_sz + i
+					      - overlap * thr_id;
+      __sync_bool_compare_and_swap(ref + shift, ref[shift], ref[shift] + 1);
 		}
 }
 
@@ -183,11 +180,7 @@ static void
 execute_spinlock_trx(unsigned long thr_id, unsigned long trx_sz, int trx_count,
 		     int overlap)
 {
-	pthread_spin_lock(&spin_l);
-
-	trx_func(thr_id, trx_sz, trx_count, overlap);
-
-	pthread_spin_unlock(&spin_l);
+	cas_func(thr_id, trx_sz, trx_count, overlap);
 }
 
 // Transaction.
@@ -379,7 +372,7 @@ main(int argc, char *argv[])
 
 	unsigned long iter = 10UL * 1000 * 1000;
 
-  //run_test(1, 240, 1, 0, iter, Sync::TSX);
+  run_test(1, 240, 1, 0, iter, Sync::TSX);
 
 	/**
 	 * Aborts statistics for single threaded load depending on transaction
@@ -411,10 +404,10 @@ main(int argc, char *argv[])
 	 * Compare TSX and spin lock performance depending on
 	 * data overlapping.
 	 */
-	for (int overlap = 0; overlap <= 32; overlap++)
-		run_test(2, 32, 1, overlap, iter, Sync::TSX);
-	for (int overlap = 0; overlap <= 32; overlap++)
-		run_test(2, 32, 1, overlap, iter, Sync::SpinLock);
+	//for (int overlap = 0; overlap <= 32; overlap++)
+	//	run_test(2, 32, 1, overlap, iter, Sync::TSX);
+	//for (int overlap = 0; overlap <= 32; overlap++)
+	//	run_test(2, 32, 1, overlap, iter, Sync::SpinLock);
 
 	pthread_spin_destroy(&spin_l);
 
