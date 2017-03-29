@@ -152,7 +152,7 @@ cas_func(unsigned long thr_id, unsigned long trx_sz, int trx_count,
 		for (unsigned i = 0; i < trx_sz; ++i) {
 			unsigned long shift = thr_id * trx_sz + i
 					      - overlap * thr_id;
-      __sync_bool_compare_and_swap(ref + shift, ref[shift], ref[shift] + 1);
+      __sync_bool_compare_and_swap((ref + shift)->c, ref[shift].c[0], ref[shift].c[0] + 1);
 		}
 }
 
@@ -373,6 +373,9 @@ main(int argc, char *argv[])
 	unsigned long iter = 10UL * 1000 * 1000;
 
   run_test(1, 240, 1, 0, iter, Sync::TSX);
+  printf("c = %d\n", ref[0].c[0]);
+  run_test(1, 240, 1, 0, iter, Sync::SpinLock);
+  printf("c = %d\n", ref[0].c[0]);
 
 	/**
 	 * Aborts statistics for single threaded load depending on transaction
