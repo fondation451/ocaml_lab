@@ -191,6 +191,9 @@ execute_short_trx(unsigned long trx_id, unsigned long trx_sz, int trx_count,
 		  int overlap)
 {
 	int abrt = 0;
+
+//  printf("ID : %d    size :%d    overlap : %d    shift_begin : %d\n", trx_id, trx_sz, overlap, trx_id * trx_sz - overlap * trx_id);
+
 	while (1) {
 		unsigned status = _xbeginb();
 
@@ -217,6 +220,8 @@ execute_short_trx(unsigned long trx_id, unsigned long trx_sz, int trx_count,
 		if (__builtin_expect(!(status & _XABORT_RETRY), 0)) {
 			++_aborts;
 
+      break;
+/*
 			// "Randomized" backoffs as suggested by Andreas Kleen.
 			// See http://software.intel.com/en-us/forums/topic/488911
 			if (++abrt == abrt_fallback[af]) {
@@ -241,7 +246,7 @@ execute_short_trx(unsigned long trx_id, unsigned long trx_sz, int trx_count,
 				while ((int)spin_l != 1)
 					_mm_pause();
 				continue;
-			}
+			}*/
 		}
 
 		++_retries;
@@ -262,7 +267,7 @@ struct Thr {
 
 	Thr(int trx_sz, int trx_count, int interleace, int iter, int thr_num,
 	    int thr_id, Sync sync)
-		: trx_sz(trx_sz), trx_count(trx_count), overlap(overlap),
+		: trx_sz(trx_sz), trx_count(trx_count), overlap(interleace),
 		iter(iter), thr_num(thr_num), thr_id(thr_id), sync(sync)
 	{
 		assert(thr_id < CORES);
@@ -280,6 +285,7 @@ struct Thr {
 		for (unsigned long i = 0; i < iter; ++i) {
 			switch (sync) {
 			case Sync::TSX:
+//        printf("id : %d  size : %d  count : %d  overlap : %d  iter : %d\n",thr_num, trx_sz, trx_count, overlap, iter);
 				execute_short_trx(thr_id, trx_sz, trx_count,
 						  overlap);
 				break;
@@ -343,9 +349,11 @@ run_test(int thr_num, int trx_sz, int trx_count, int overlap, int iter,
 	int r = gettimeofday(&tv0, NULL);
 	assert(!r);
 
-	for (int i = 0; i < thr_num; ++i)
+	for (int i = 0; i < thr_num; ++i) {
+//printf("i : %d  id : %d  size : %d  count : %d  overlap : %d  iter : %d\n", i, thr_num, trx_sz, trx_count, overlap, iter);
 		thr[i] = std::thread(Thr(trx_sz, trx_count, overlap, iter,
 					 thr_num, i, sync));
+  }
 
 	for (auto &t : thr)
 		t.join();
@@ -354,7 +362,7 @@ run_test(int thr_num, int trx_sz, int trx_count, int overlap, int iter,
 	assert(!r);
 
 	check_consistency(thr_num * trx_sz);
-
+/*
   std::cout << "thr=" << thr_num << "\ttrx_sz=" << trx_sz
 		<< "\ttrx_count=" << trx_count << "\toverlap=" << overlap
 		<< "\titer=" << iter
@@ -362,6 +370,10 @@ run_test(int thr_num, int trx_sz, int trx_count, int overlap, int iter,
 		<< "\taborts=" << aborts.load()
 		<< "(" << (aborts.load() * 100 / (iter * thr_num)) << "%)"
 		<< "\tretries=" << retries.load()
+		<< std::endl;
+*/
+  std::cout
+		<< overlap << "\t" << (tv_to_ms(tv1) - tv_to_ms(tv0))
 		<< std::endl;
 }
 
@@ -372,17 +384,18 @@ main(int argc, char *argv[])
 
 	unsigned long iter = 10UL * 1000 * 1000;
 
-  run_test(1, 240, 1, 0, iter, Sync::TSX);
-  printf("c = %d\n", ref[0].c[0]);
-  run_test(1, 240, 1, 0, iter, Sync::SpinLock);
-  printf("c = %d\n", ref[0].c[0]);
+  //run_test(1, 240, 1, 0, iter, Sync::TSX);
+  //printf("c = %d\n", ref[0].c[0]);
+  //run_test(1, 240, 1, 0, iter, Sync::SpinLock);
+  //printf("c = %d\n", ref[0].c[0]);
 
 	/**
 	 * Aborts statistics for single threaded load depending on transaction
 	 * work set.
 	 */
-	//for (int trx_sz = 32; trx_sz <= 1024; trx_sz += 4)
-	//	run_test(1, trx_sz, 1, 0, iter, Sync::TSX);
+	//for (int trx_sz = 32; trx_sz <= 450; trx_sz += 4) {
+	//	run_test(1, trx_sz, 1, 0, iter, Sync::SpinLock);
+  //}
 
 	/*
 	 * Compare TSX and spin lock performance depending on transaction
@@ -407,10 +420,15 @@ main(int argc, char *argv[])
 	 * Compare TSX and spin lock performance depending on
 	 * data overlapping.
 	 */
-	//for (int overlap = 0; overlap <= 32; overlap++)
-	//	run_test(2, 32, 1, overlap, iter, Sync::TSX);
-	//for (int overlap = 0; overlap <= 32; overlap++)
-	//	run_test(2, 32, 1, overlap, iter, Sync::SpinLock);
+	//	run_test(2, 32, 1, 15, iter, Sync::TSX);
+  for (int overlap = 0; overlap <= 32; overlap++) {
+		run_test(2, 32, 1, overlap, iter, Sync::TSX);
+  //  printf("c = %d and overlap = %d\n", ref[25].c[0], overlap);
+  }
+	for (int overlap = 0; overlap <= 32; overlap++) {
+		run_test(2, 32, 1, overlap, iter, Sync::SpinLock);
+  //  printf("c = %d\n", ref[29].c[0]);
+  }
 
 	pthread_spin_destroy(&spin_l);
 
