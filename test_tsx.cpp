@@ -362,7 +362,7 @@ run_test(int thr_num, int trx_sz, int trx_count, int overlap, int iter,
 	assert(!r);
 
 	check_consistency(thr_num * trx_sz);
-/*
+
   std::cout << "thr=" << thr_num << "\ttrx_sz=" << trx_sz
 		<< "\ttrx_count=" << trx_count << "\toverlap=" << overlap
 		<< "\titer=" << iter
@@ -371,10 +371,10 @@ run_test(int thr_num, int trx_sz, int trx_count, int overlap, int iter,
 		<< "(" << (aborts.load() * 100 / (iter * thr_num)) << "%)"
 		<< "\tretries=" << retries.load()
 		<< std::endl;
-*/
-  std::cout
-		<< overlap << "\t" << (tv_to_ms(tv1) - tv_to_ms(tv0))
-		<< std::endl;
+
+//  std::cout
+//		<< overlap << "\t" << (tv_to_ms(tv1) - tv_to_ms(tv0))
+//		<< std::endl;
 }
 
 int
@@ -385,7 +385,6 @@ main(int argc, char *argv[])
 	unsigned long iter = 10UL * 1000 * 1000;
 
   //run_test(1, 240, 1, 0, iter, Sync::TSX);
-  //printf("c = %d\n", ref[0].c[0]);
   //run_test(1, 240, 1, 0, iter, Sync::SpinLock);
   //printf("c = %d\n", ref[0].c[0]);
 
@@ -393,9 +392,15 @@ main(int argc, char *argv[])
 	 * Aborts statistics for single threaded load depending on transaction
 	 * work set.
 	 */
-	//for (int trx_sz = 32; trx_sz <= 450; trx_sz += 4) {
-	//	run_test(1, trx_sz, 1, 0, iter, Sync::SpinLock);
-  //}
+  printf("Test TSX with CAS Fallback\n");
+	for (int trx_sz = 32; trx_sz <= 450; trx_sz += 4) {
+		run_test(1, trx_sz, 1, 0, iter, Sync::TSX);
+  }
+
+  printf("Test CAS\n");
+	for (int trx_sz = 32; trx_sz <= 450; trx_sz += 4) {
+		run_test(1, trx_sz, 1, 0, iter, Sync::SpinLock);
+  }
 
 	/*
 	 * Compare TSX and spin lock performance depending on transaction
@@ -420,14 +425,13 @@ main(int argc, char *argv[])
 	 * Compare TSX and spin lock performance depending on
 	 * data overlapping.
 	 */
-	//	run_test(2, 32, 1, 15, iter, Sync::TSX);
+  printf("Test Overlapping 2 Threads : TSX with CAS Fallback\n");
   for (int overlap = 0; overlap <= 32; overlap++) {
 		run_test(2, 32, 1, overlap, iter, Sync::TSX);
-  //  printf("c = %d and overlap = %d\n", ref[25].c[0], overlap);
   }
+  printf("Test Overlapping 2 Threads : CAS\n");
 	for (int overlap = 0; overlap <= 32; overlap++) {
 		run_test(2, 32, 1, overlap, iter, Sync::SpinLock);
-  //  printf("c = %d\n", ref[29].c[0]);
   }
 
 	pthread_spin_destroy(&spin_l);
